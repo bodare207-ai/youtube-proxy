@@ -1,5 +1,5 @@
-Flask==2.3.3
-Flask-CORS==4.0.0
-gunicorn==21.2.0
-yt-dlp==2024.10.22
-requests==2.31.0
+Flask
+Flask-CORS
+gunicorn
+yt-dlp
+requests
