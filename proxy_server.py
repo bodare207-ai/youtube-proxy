@@ -3,16 +3,14 @@ YouTube Proxy Server - Deploy on Render/Railway
 This server acts as a bridge between your offline YouTube and real YouTube
 """
 
-from flask import Flask, request, jsonify, Response, send_file
+from flask import Flask, request, jsonify, Response
 import yt_dlp
 import requests
 import json
-import io
-import re
 from flask_cors import CORS
 
 app = Flask(__name__)
-CORS(app)  # Allow all origins (for your offline app)
+CORS(app)  # Allow all origins
 
 # ==================== VIDEO INFO ====================
 @app.route('/api/info')
@@ -37,27 +35,13 @@ def get_video_info():
                 'thumbnail': info.get('thumbnail'),
                 'channel': info.get('channel'),
                 'channel_id': info.get('channel_id'),
-                'description': info.get('description')[:500],
+                'description': info.get('description', '')[:500],
                 'view_count': info.get('view_count'),
                 'like_count': info.get('like_count'),
                 'upload_date': info.get('upload_date'),
                 'categories': info.get('categories', []),
-                'tags': info.get('tags', []),
+                'tags': info.get('tags', [])[:10],
                 'is_live': info.get('is_live', False),
-                'formats': [
-                    {
-                        'format_id': f.get('format_id'),
-                        'ext': f.get('ext'),
-                        'height': f.get('height'),
-                        'width': f.get('width'),
-                        'filesize': f.get('filesize'),
-                        'tbr': f.get('tbr'),
-                        'vcodec': f.get('vcodec'),
-                        'acodec': f.get('acodec'),
-                    }
-                    for f in info.get('formats', [])
-                    if f.get('vcodec') != 'none' and f.get('height', 0) > 0
-                ][:10]  # Limit to 10 formats
             })
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -73,7 +57,6 @@ def stream_video():
         return jsonify({'error': 'No URL provided'}), 400
     
     try:
-        # Get the actual video URL
         ydl_opts = {
             'quiet': True,
             'no_warnings': True,
@@ -82,8 +65,8 @@ def stream_video():
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
             video_url = info.get('url')
-            if not video_url:
-                # Fallback to direct format URL
+            
+            if not video_url and info.get('formats'):
                 for f in info.get('formats', []):
                     if f.get('format_id') == format_id or format_id == 'best':
                         video_url = f.get('url')
@@ -92,7 +75,7 @@ def stream_video():
             if not video_url:
                 return jsonify({'error': 'No video URL found'}), 404
             
-            # Stream the video in chunks
+            # Stream the video
             headers = {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
                 'Range': request.headers.get('Range', 'bytes=0-'),
@@ -100,7 +83,6 @@ def stream_video():
             
             response = requests.get(video_url, headers=headers, stream=True)
             
-            # Forward the response
             return Response(
                 response.iter_content(chunk_size=8192),
                 status=response.status_code,
@@ -129,7 +111,6 @@ def search_videos():
             'quiet': True,
             'no_warnings': True,
             'extract_flat': True,
-            'default_search': f'ytsearch{limit}:{query}',
         }
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(f'ytsearch{limit}:{query}', download=False)
@@ -163,5 +144,6 @@ def health():
 def ping():
     return 'pong'
 
+# ==================== MAIN ====================
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000)
+    app.run(host='0.0.0.0', port=5000, debug=False)
